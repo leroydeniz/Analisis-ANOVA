@@ -1,0 +1,1161 @@
+---
+title: "A4 - Análisis estadístico avanzado"
+subtitle: "Estadística Avanzada"
+author: "Leroy Deniz"
+date: "Actualizado: `r format(Sys.time(), '%d %B, %Y')`"
+geometry: "top=2cm,bottom=2cm"
+header-includes:
+   \setlength{\parskip}{1ex plus 0.5ex minus 0.5ex}
+output:
+  pdf_document:
+    keep_tex: true
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=60), tidy=TRUE)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+\tableofcontents
+
+
+\newpage
+
+<br><br><br>
+
+# 0 Contexto
+
+------------------------------------------------------------------------
+
+## 0.1 Importación de librerías
+
+```{r message=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(reshape2)
+library(stats)
+library(dplyr)
+```
+
+## 0.2 Funciones auxiliares
+
+```{r}
+# Función para mostrar información en vertical
+vertical <- function(tbl) {
+  t(t(tbl))
+}
+```
+
+## 0.3 Configuraciones
+
+```{r}
+options(dplyr.summarise.inform = FALSE)
+```
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+
+# 1 Preprocesado
+
+------------------------------------------------------------------------
+
+## 1.1 Lectura del fichero
+
+```{r}
+df <- read.csv("Fumadores.csv", sep=";", dec='.')
+```
+
+\vspace{0.3cm}
+
+Muestra del dataset generado a raíz de la lectura:
+
+\vspace{0.3cm}
+
+```{r}
+head(df)
+```
+
+## 1.2 Consulta de tipos y transformaciones
+
+```{r}
+vertical(sapply(df,class))
+```
+
+\vspace{0.3cm}
+
+Una vez conocidos los tipos de datos en función de su contenido, se evalúa por separado los tipos _character_ para estandarizar los valores si corresponde. Los valores presentes en la variable _genero_ son dos y correctos como puede verse a continuación.
+
+\vspace{0.3cm}
+
+```{r}
+unique(df$genero)
+```
+
+\vspace{0.3cm}
+
+Sin embargo en la variable _Tipo_ se encuentran los valores con espacios y con mayúsculas y minúsculas.
+
+\vspace{0.3cm}
+
+```{r}
+unique(df$Tipo)
+```
+
+\vspace{0.3cm}
+
+A continuación se eliminan los espacios y se convierte el contenido todo a mayúsculas.
+
+\vspace{0.3cm}
+
+```{r}
+df$Tipo = sapply(df$Tipo, toupper)
+df$Tipo <- sapply(df$Tipo, trimws, which=c("both"))
+tipos <- unique(df$Tipo)
+tipos
+```
+
+\vspace{0.3cm}
+
+La variable _AE_ se identificaba como _character_ porque tenía comas en lugar de puntos en su separador de decimales. Se aplica el cambio para corregirlo.
+
+\vspace{0.3cm}
+
+```{r}
+df$AE <- sub(",", ".", df$AE, fixed=TRUE)
+```
+
+\vspace{0.3cm}
+
+Una vez procesados todas las variables con las correcciones previas, se realizrá la conversión de la variable _AE_ a tipo _Number_; la columna _edad_ es de tipo entera ya está correctamente definida por R, así como las variables _Tipo_ y _genero_ que son de tipo _character_ pero mantienen siempre un conjunto finito de valores, por lo que podemos pasarlas a _factor_.
+
+\vspace{0.3cm}
+
+```{r}
+df$AE <- as.numeric(df$AE)
+df$Tipo <- factor(df$Tipo)
+df$genero <- factor(df$genero)
+
+vertical(sapply(df,class))
+```
+
+\vspace{0.3cm}
+
+Para encontrar posibles valores atípicos en la variable _edad_, se utiliza un boxplot y se contebilizan.
+
+\vspace{0.3cm}
+
+```{r}
+boxplot(df$edad, horizontal = TRUE)
+
+outliers = boxplot.stats(df$edad)$out
+cat("Hay un total de", length(outliers), "outliers en la variable edad")
+```
+
+\vspace{0.3cm}
+
+Al único outlier encontrado, se le asigna NaN como valor y se muestra a través de la función _summary_.
+
+\vspace{0.3cm}
+
+```{r}
+df$edad[which(df$edad %in% outliers)] = NaN
+summary(df$edad)
+```
+
+\vspace{0.3cm}
+
+Al outlier se le imputa el de la media de la serie y se verifica nuevamente cuántos outliers hay.
+
+\vspace{0.3cm}
+
+```{r}
+df$edad[is.na(df$edad)] <- mean(df$edad, na.rm = T)
+outliers = boxplot.stats(df$edad)$out
+cat("Hay un total de", length(outliers), "outliers en la variable edad")
+```
+
+\vspace{0.3cm}
+
+Ahora bien, para el caso de la variable _AE_ se realiza otro boxplot para verificar la existencia de outliers y contarlos.
+
+\vspace{0.3cm}
+
+```{r}
+outliers = boxplot.stats(df$AE)$out
+cat("Hay un total de", length(outliers), "outliers en la variable AE")
+boxplot(df$AE, horizontal = TRUE)
+```
+
+\vspace{0.3cm}
+
+Se realiza el mismo procedimiento de imputación que para la variable _edad_, imputándole el valor de la media.
+
+\vspace{0.3cm}
+
+```{r}
+df$AE[is.na(df$AE)] <- mean(df$AE, na.rm = T)
+```
+
+\vspace{0.3cm}
+
+Estructura final del dataset procesado.
+
+\vspace{0.3cm}
+
+```{r}
+summary(df)
+```
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+
+# 2 Análisis de la muestra
+
+------------------------------------------------------------------------
+
+## 2.1 Capacidad pulmonar y género
+
+\vspace{0.3cm}
+
+Mostrar la capacidad pulmonar en relación al género. ¿Se observan diferencias?
+
+\vspace{0.3cm}
+
+```{r}
+ggplot(df, aes(AE)) +
+  geom_histogram(aes(y = ..density..), bins = 20, color = "black", fill ="white") +
+  geom_density(aes(fill = genero), alpha = 0.2) +
+  facet_wrap(~ genero)
+```
+
+\vspace{0.3cm}
+
+Las distribuciones parecen centradas en la media del intervalo [0;3], aunque sí existen más casos atípicos cuando el género es _F_.
+
+\vspace{0.3cm}
+
+## 2.2 Capacidad pulmonar y edad
+
+\vspace{0.3cm}
+
+Mostrar la relación entre capacidad pulmonar y edad usando un gráfico de dispersión. Interpretar.
+
+\vspace{0.3cm}
+
+```{r}
+plot(df$edad, df$AE, main="AE ~ edad", xlab="edad ", ylab="AE ", col=df$AE)
+```
+
+## 2.3 Tipos de fumadores y capacidad pulmonar
+
+\vspace{0.3cm}
+
+Mostrar el número de personas en cada tipo de fumador y la media de AE de cada tipo de fumador. Mostrad un gráfico que visualice esta media. Se recomienda que el gráfico esté ordenado de menos a más AE.
+
+\vspace{0.3cm}
+
+```{r}
+barplot(table(df$Tipo), col='#F7766C66', xlab="Tipo", ylab="Count")
+```
+
+\newpage
+
+Cálculo de la media de capacidad pulmonar _AE_ para cada tipo de fumador.
+
+\vspace{0.3cm}
+
+```{r}
+resumen <- df %>% group_by(Tipo) %>% summarize(means = mean(AE), counts = length(AE))
+print(resumen)
+```
+
+\vspace{0.3cm}
+
+Gráfico de las medias según el tipo de fumador.
+
+\vspace{0.3cm}
+
+```{r}
+ggplot(resumen, aes(x = reorder(Tipo, means), y = means))  +
+  geom_col(fill='#F7766C66') +
+  xlab("Tipo") +
+  ylab("Medias de AE")
+
+```
+
+\newpage
+
+Distribución de _AE_ según el tipo de fumador.
+
+\vspace{0.3cm}
+
+```{r}
+ggplot(df, aes(x = Tipo, y = AE)) + geom_boxplot(fill='#F7766C66')
+```
+
+\vspace{0.3cm}
+
+A partir del boxplot anterior, se puede ver que existen dos outliers en la variable _Tipo_ cuando toma los valores FL y NF. Además, se podría ver que la media de capacidad pulmonar para los No fumadores (NF) es la más alta de todos los demás tipos y que podría haber una relación entre los tipos FI y FM.
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+
+# 3 Intervalo de confianza de la capacidad pulmonar
+
+------------------------------------------------------------------------
+
+\vspace{0.3cm}
+
+Calcular el intervalo de confianza al 95% de la capacidad pulmonar de las mujeres y hombres por separado. Antes de aplicar el cálculo, revisar si se cumplen las asunciones de aplicación del intervalo de confianza. Interpretar los resultados. A partir de estos cálculos, ¿se observan diferencias significativas en la capacidad pulmonar de mujeres y hombres?
+
+Nota: Realizar el cálculo manualmente sin usar las funciones t.test o equivalentes. Podéis usar qnorm, qt, pnorm, pt, . . .
+
+\vspace{0.3cm}
+
+Se verifican las condiciones para la aplicación del intervalo de confianza, donde se tiene un total de `r nrow(df)` registros en el dataset, con `r sum(df$genero == "M")` casos masculinos y `r sum(df$genero == "F")` casos Femeninos. Se tiene entonces más de 30 casos para cada tipo y una varianza descnocida, por lo que se verifica así que puede construir a través de una distribución normal.
+
+\vspace{0.3cm}
+
+```{r}
+#Función de cálculo del intervalo de confianza para distribución normal
+IC <- function( x, NC ){ 
+  n <- length(x)
+  alpha <- 1 / (NC/100)
+  SE <- sd(x) / sqrt(n)
+  
+  z <- qnorm(alpha / 2, lower.tail=TRUE)
+  z_SE <- z*SE
+  Low <- mean(x) - z_SE
+  Up <- mean(x) + z_SE
+  
+  return ( c(Low,Up) )
+}
+```
+
+\vspace{0.3cm}
+
+```{r}
+int_conf_f <- IC(df$AE[df$genero == "F"], 95)
+int_conf_m <- IC(df$AE[df$genero == "M"], 95)
+```
+
+\vspace{0.3cm}
+
+El intervalo de confianza al 95% para el género M es [`r int_conf_m`] mientras que para el género F es [`r int_conf_f`].
+
+\vspace{0.3cm}
+
+Ambos intervalos son relativamente similares puesto que varían recién en la segunda cifra decimal, ambos rondan el 1.55 como valor central.
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+
+# 4 Diferencias en capacidad pulmonar entre mujeres y hombres
+
+------------------------------------------------------------------------
+
+\vspace{0.3cm}
+
+Aplicar un contraste de hipótesis para evaluar si existen diferencias significativas entre la capacidad pulmonar de mujeres y hombres. Seguid los pasos que se indican a continuación.
+
+Nota: Realizar el cálculo manualmente sin usar las funciones t.test o equivalentes. Podéis usar qnorm, qt, pnorm, pt, . . .
+
+\vspace{0.3cm}
+
+## 4.1 Hipótesis
+
+Escribir la hipótesis nula y alternativa.
+
+\vspace{0.3cm}
+
+$$H_0:  \mu_{AE\_M} = \mu_{AE\_F}$$
+$$H_1: \mu_{AE\_M} \neq \mu_{AE\_F}$$
+
+\vspace{0.3cm}
+
+## 4.2 Contraste
+
+Explicad qué tipo de contraste aplicaréis y por qué. Si es necesario, validad las asunciones del test.
+
+\vspace{0.3cm}
+
+Se utiliza para este apartado un contraste de media de dos distribuciones, porque son dos separadas, independientes una de la otra aunque ambas pertenecen a la misma muestra.
+
+\vspace{0.3cm}
+
+```{r}
+contraste_medias <- function (s1, s2, alt, CL) {
+  
+  # Cálculo de Medias
+  mean1 <- mean(s1)
+  mean2 <- mean(s2)
+  
+  # Cálculo del tamaño de la muestra
+  n1 <- length(s1)
+  n2 <- length(s2)
+  
+  # Cálculo de la desviación estándar
+  sd1 <- sd(s1)
+  sd2 <- sd(s2)
+  
+  # Cálculo del nivel de significancia
+  alpha <- (1 - CL / 100)
+  
+  # Cálculo de los grados de libertad (Apartado 5.2.2 de la teoría)
+  denominador <- ( ( sd1^2/n1 )^2/(n1-1) + (sd2^2/n2)^2/(n2-1) )
+  df <- ( ( sd1^2/n1 + sd2^2/n2 )^2 ) / denominador
+  
+  # Cálculo del valor t (z según la distribución normal estandarizada)
+  sb <- sqrt( sd1^2/n1 + sd2^2/n2 )
+  t <- ( mean1-mean2 ) / sb
+  
+  # Evaluación de la condición =
+  if (alt == "bilateral"){
+    t_critical <- qt( alpha/2, df, lower.tail=FALSE )
+    p_value<-pt( abs(t), df, lower.tail=FALSE )*2
+    
+  # Evaluación de la condición <
+  } else if (alt == "<"){
+    t_critical <- qt( alpha, df, lower.tail=TRUE )
+    p_value<-pt( t, df, lower.tail=TRUE )
+    
+  # Evaluación de la condición >
+  }else{ #(alt == ">")
+    t_critical <- qt( alpha, df, lower.tail=FALSE )
+    p_value<-pt( t, df, lower.tail=FALSE )
+  }
+  
+  # Definición del vector resultado
+  vector_data <- c(mean1, mean2, t, t_critical, p_value, alpha, df)
+  names(vector_data) <- c("mean1", "mean2", "t", "t_critical", "p_value", "alpha", "df")
+  return (vector_data)
+}
+```
+
+\vspace{0.3cm}
+
+## 4.3 Cálculos
+
+Aplicad los cálculos del contraste. Mostrar el valor observado, el valor de contraste y el valor p.
+
+\vspace{0.3cm}
+
+```{r}
+x <- df$AE[df$genero == "F"]
+y <- df$AE[df$genero == "M"]
+datos <- contraste_medias(x, y, "bilateral", 95)
+vertical(datos)
+```
+
+\vspace{0.3cm}
+
+## 4.3 Cálculos
+
+Interpretad los resultados y comparad las conclusiones con los intervalos de confianza calculados anteriormente.
+
+\vspace{0.3cm}
+
+Como el _p_value_ es mayor que el nivel de significancia, se debe aceptar la hipótesis nula porque no hay evidencia suficiente para poder descartarla. Por lo tanto, lo único que se puede decir es que la capacidad pulmonar de ambos grupos se muestra igual.
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+
+# 5 Diferencias en la capacidad pulmonar entre Fumadores y No Fumadores
+
+------------------------------------------------------------------------
+
+\vspace{0.3cm}
+
+¿Podemos afirmar que la capacidad pulmonar de los fumadores es inferior a la de no fumadores? Incluid dentro de la categoría de no fumadores los fumadores pasivos. Seguid los pasos que se indican a continuación.
+
+Nota: Realizar el cálculo manualmente sin usar las funciones t.test o equivalentes. Podéis usar qnorm, qt, pnorm, pt, . . .
+
+\vspace{0.3cm}
+
+## 5.1 Hipótesis
+
+Escribir la hipótesis nula y alternativa.
+
+\vspace{0.3cm}
+
+$$H_0:  \mu_{AE\_FUM} \geq \mu_{AE\_NOFUM}$$
+$$H_1: \mu_{AE\_FUM} < \mu_{AE\_NOFUM}$$
+
+\vspace{0.3cm}
+
+## 5.2 Contraste
+
+Explicad qué tipo de contraste aplicaréis y por qué. Si es necesario, validad las asunciones del test.
+
+\vspace{0.3cm}
+
+Se aplica un contraste de hipótesis de dos muestras independientes, ya que hay suficientes casos en cada distribución para poder afirmar que siguen una distribución normal. Además, se tienen varianzas poblacionales desconocidas diferentes.
+
+\vspace{0.3cm}
+
+## 5.3 Preparación de los datos
+
+Preparad las muestras. Una de ellas contiene los valores de AE de los fumadores y la otra, los valores de AE de los no fumadores y fumadores pasivos.
+
+\vspace{0.3cm}
+
+```{r}
+indeces <- df$Tipo == "NF" | df$Tipo == "FP"
+no_fumadores <- df$AE[indeces]
+fumadores <- df$AE[!indeces]
+cat("No Fumadores: ", length(no_fumadores))
+cat("Fumadores: ", length(fumadores))
+```
+
+\newpage
+
+## 5.4 Cálculos
+
+Preparad las muestras. Una de ellas contiene los valores de AE de los fumadores y la otra, los valores de AE de los no fumadores y fumadores pasivos.
+
+\vspace{0.3cm}
+
+```{r}
+datos <- contraste_medias(fumadores, no_fumadores, "<", 95)
+vertical(datos)
+```
+
+\vspace{0.3cm}
+
+## 5.5 Interpretación
+
+Interpretar el resultado del contraste
+
+\vspace{0.3cm}
+
+Ya que el _p_value_ tiene un valor menor al nivel de significancia, se puede rechazar la hipótesis nula y aceptar la hipótesis alternativa. Por lo tanto, se tiene evidencia estadística suficiente para inferir que la capacidad pulmonar de los fumadores es menor que la de los no fumadores.
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+
+# 6 Análisis de regresión lineal
+
+------------------------------------------------------------------------
+
+\vspace{0.3cm}
+
+Realizamos un análisis de regresión lineal para investigar la relación entre la variable capacidad pulmonar (AE) y el resto de variables (tipo, edad y género). Construid e interpretad el modelo, siguiendo los pasos que se especifican a continuación.
+
+\vspace{0.3cm}
+
+## 6.1 Cálculo
+
+Calculad el modelo de regresión lineal. Podéis usar la función lm.
+
+\vspace{0.3cm}
+
+```{r}
+model <- lm(formula = AE ~ Tipo + edad + genero, df)
+summary(model)
+```
+
+\vspace{0.3cm}
+
+## 6.2 Interpretación
+
+Interpretad el modelo y la contribución de cada variable explicativa sobre la variable AE.
+
+\vspace{0.3cm}
+
+- el _p_value_ es de 2.26e-16, es decir, que podemos considerar que se ha obtenido una muy buena regresión ya que está muy por debajo del nivel de significación.
+- la _recta de regresión_ que se desprende de la información del modelo es _y = 2.704758 + 0.337958 * TipoFL + 0.043769 * TipoFM + 0.395316 * TipoFP + 0.801520 * TipoNF + 0.423578 * TipoNI - 0.030162 * edad - 0.007653 * generoM_
+- para un nivel de significancia de 0.05, las variables TipoFM y generoM tienen un valor _Pr(>|t|)_ mayor que el nivel de significancia, por lo que no son relevantes para el modelo.
+
+\newpage
+
+## 6.3 Bondad del ajuste
+
+Evaluad la calidad del modelo.
+
+\vspace{0.3cm}
+
+El _R-quared_ tiene un valor de 0.5541, por lo que no se podría decir que es un modelo ajustado ya que está alejado del 1, pero tampoco es poco ajustado porque está alejado del 0.
+
+\vspace{0.3cm}
+
+## 6.4 Predicción
+
+Realizad una predicción de la capacidad pulmonar para cada tipo de fumador desde los 30 años de edad hasta los 80 años de edad (podéis asumir género hombre). Mostrad una tabla con los resultados. Mostrad también visualmente la simulación.
+
+\vspace{0.3cm}
+
+```{r}
+names(tipos) <- tipos
+edades <- 30:80
+names(edades) <- edades
+predictions <- data.frame(outer(edades, tipos, function(edad,tipo) { return( predict(model, data.frame(Tipo=tipo, edad=edad, genero="M")) ) }) )
+predictions['edades'] <- edades
+predictions
+```
+
+\vspace{0.3cm}
+
+```{r}
+predictions.melt <- melt(predictions, id.vars='edades')
+ggplot(predictions.melt, aes(edades, value, colour=variable)) +
+  geom_point()+
+  ylab('AE') + labs(color='Tipos')
+```
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+
+# 7 ANOVA unifactorial
+
+------------------------------------------------------------------------
+
+\vspace{0.3cm}
+
+A continuación se realizará un análisis de varianza, donde se desea comparar la capacidad pulmonar entre los seis tipos de fumadores/no fumadores clasificados previamente. El análisis de varianza consiste en evaluar si la variabilidad de una variable dependiente puede explicarse a partir de una o varias variables independientes, denominadas factores. En el caso que nos ocupa, nos interesa evaluar si la variabilidad de la variable AE puede explicarse por el factor tipo de fumador. Hay dos preguntas básicas a responder:
+
+- ¿Existen diferencias entre la capacidad pulmonar (AE) entre los distintos tipos de fumadores/no fumadores?
+- Si existen diferencias, ¿entre qué grupos están estas diferencias?
+
+\vspace{0.3cm}
+
+## 7.1 Normalidad
+
+Evaluar si el conjunto de datos cumple las condiciones de aplicación de ANOVA. Seguid los pasos que se indican a continuación. Mostrad visualmente si existe normalidad en los datos y también aplicar un test de normalidad.
+
+Nota: podéis usar el gráfico normal Q-Q y el test Shapiro-Wilk para evaluar la normalidad de los residuos.
+
+\vspace{0.3cm}
+
+```{r}
+linear_model <- lm(AE ~ Tipo, df)
+linear_residuals <- residuals(linear_model)
+qqnorm(linear_residuals)
+qqline(linear_residuals)
+```
+
+\vspace{0.3cm}
+
+Se observa que la mayoría de los residuos se aproximan a la recta, por lo que no se ve un comportamiento que vaya en contra del supuesto de normalidad. Sin embargo, se procede al test de Shapiro-Wilk para confirmarlo.
+
+\vspace{0.3cm}
+
+```{r}
+shapiro.test(linear_residuals)
+```
+
+\vspace{0.3cm}
+
+Como el _p_value_ del test de Shapiro-Wilk es menor que el nivel de significancia del 5%, se rechaza la hipótesis nula y se acepta la hipótesis alternativa. En este caso, se tiene que la variable aleatoria que representa los errores del modelo no sigue una distribución normal.
+
+\vspace{0.3cm}
+
+## 7.2 Homocedasticidad: Homogeneidad de varianzas
+
+Otra de las condiciones de aplicación de ANOVA es la igualdad de varianzas (homoscedasticidad). Aplicar un test para validar si los grupos presentan igual varianza. Aplicad el test adecuado e interpretar el resultado.
+
+Nota: podéis usar tests como el de Levene o Bartlett test.
+
+\vspace{0.3cm}
+
+```{r}
+bartlett.test(AE ~ Tipo, data=df)
+```
+
+\vspace{0.3cm}
+
+Como el _p_value_ es mayor que el nivel de significancia del 5%, aceptamos la hipótesis nula de que las varianzas son iguales.
+
+\vspace{0.3cm}
+
+## 7.3 Hipótesis nula y alternativa
+
+Independientemente de los resultados sobre la normalidad e homoscedasticidad de los datos, proseguiremos con la aplicación del análisis de varianza. Concretamente, se aplicará ANOVA de un factor (one-way ANOVA o independent samples ANOVA) para investigar si existen diferencias en el nivel de aire expulsado (AE) entre los distintos tipos de fumadores. Escribid la hipótesis nula y alternativa.
+
+\vspace{0.3cm}
+
+$$ H_0: \mu_{NF} = \mu_{FP} = \mu_{NI} = \mu_{FL} = \mu_{FM} = \mu_{FI} = \mu $$
+$$ H_1: \exists\mu_j \neq \mu, \ j=\{NF, FP, NI, FL, FM, FI\}$$
+
+\vspace{0.3cm}
+
+## 7.4 Cálculo ANOVA
+
+Podéis usar la función aov.
+
+\vspace{0.3cm}
+
+```{r}
+anova_model <- aov(AE ~ Tipo, data=df)
+summarized_model <- summary(anova_model)
+summarized_model
+```
+
+\newpage
+
+## 7.5 Interpretación
+
+Interpretad los resultados de la prueba ANOVA y relacionarlos con el resultado gráfico del boxplot mostrado en el apartado 2.3.
+
+\vspace{0.3cm}
+
+Dado que el _p_value_ es mucho más pequeño que el nivel de significancia del 5%, se puede rechazar la hipótesis nula y aceptar la hipótesis alternativa. Esto es, que hay al menos un valor de la variable _Tipo_ cuya media no es igual a las demás. Por tanto, _Tipo_ es un factor significativo en el modelo para predecir _AE_.
+
+\vspace{0.3cm}
+
+## 7.6 Profundización en ANOVA
+
+A partir de los resultados del modelo devuelto por aov, identificar las variables SST (Total Sum of Squares), SSW (Within Sum of Squares), SSB (Between Sum of Squares) y los grados de libertad. A partir de estos valores, calcular manualmente el valor F, el valor crítico (a un nivel de confianza del 95%), y el valor p. Interpretar los resultados y explicar el significado de las variables SST, SSW y SSB.
+
+\vspace{0.3cm}
+
+Se obtiene la información a partir de la tabla de anova.
+
+\vspace{0.3cm}
+
+```{r}
+# Se obtienen los Sum Squares
+SS <- summarized_model[[1]]$"Sum Sq"
+
+# Primer elemento SSA, segundo SSE
+SSB <- SS[1]
+SSW <- SS[2]
+SST <- SSB + SSW
+
+# Obtener los grados de libertad
+DFs <- summarized_model[[1]]$"Df"
+df.SSB <- DFs[1]
+df.SSW <- DFs[2]
+```
+
+\vspace{0.3cm}
+
+### Cálculo del F value
+
+\vspace{0.3cm}
+
+```{r}
+F <- (SSB/df.SSB)/(SSW/df.SSW)
+cat("F value: ", F)
+```
+
+\vspace{0.3cm}
+
+### Cálculo del Valor crítico
+
+\vspace{0.3cm}
+
+```{r}
+critical <- qf(p=0.05, df1=df.SSB, df2=df.SSW, lower.tail=FALSE)
+cat("Critical value: ", critical)
+```
+
+\newpage
+
+### Cálculo del P value
+
+\vspace{0.3cm}
+
+```{r}
+p_value <- pf(q=F, df1=df.SSB, df2=df.SSW, lower.tail=FALSE)
+cat("P value: ", p_value)
+```
+
+\vspace{0.3cm}
+
+Los resultados obtenidos coinciden con la tabla de _aov_. El _P value_ es más pequeño que el $\alpha$, por lo que se confirma el rechazo a la hipótesis nula y se acepta la hipótesis alternativa (apartado 7.3). 
+
+\vspace{0.3cm}
+
+La variable SST es la suma de los errores cuadrados totales, como se puede ver la suma de SSB y SSW. La variable SSW es lo mismo que SSE, que muestra la suma de los errores cuadrados, mientras que la variable SSB es lo mismo que SSA, que es la suma de los cuadrados de los tratamientos.
+
+\vspace{0.3cm}
+
+## 7.7 Fuerza de la relación
+
+Calcular la fuerza de la relación e interpretar el resultado.
+
+\vspace{0.3cm}
+
+```{r}
+R2 <- SSB/SST
+R2
+```
+
+\vspace{0.3cm}
+
+El coeficiente de determinación es la proporción de variación de la variable _AE_ frente al predictor _Tipo_, que para este caso asciende a un 26.57%.
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+
+# 8 Comparaciones múltiples
+
+------------------------------------------------------------------------
+
+\vspace{0.3cm}
+
+Independientemente del resultado obtenido en el apartado anterior, realizamos un test de comparación múltiple entre los grupos. Este test se aplica cuando el test ANOVA devuelve rechazar la hipótesis nula de igualdad de medias. Por tanto, procederemos como si el test ANOVA hubiera dado como resultado el rechazo de la hipótesis nula.
+
+\vspace{0.3cm}
+
+## 8.1 Test pairwise
+
+Calcular las comparaciones entre grupos sin ningún tipo de corrección. Podéis usar la función pairwise.t.test. Interpretar los resultados.
+
+\vspace{0.3cm}
+
+```{r}
+pairwise.t.test(df$AE,df$Tipo, p.adj=c("none"))
+```
+
+\vspace{0.3cm}
+
+- Como podemos observar el valor del _p_value_ que hemos obtenido para el par FM-FI es mayor que un nivel de significancia del 5%, por lo que no tenemos evidencia estadística para rechazar la hipótesis de que ambos son similares.
+
+- Como podemos observar el valor del _p_value_ que hemos obtenido para el par FP-FL es mayor que un nivel de significancia del 5%, por lo que no tenemos evidencia estadística para rechazar la hipótesis de que ambos son similares.
+
+- Como podemos observar el valor del _p_value_ que hemos obtenido para el par NI-FL es mayor que un nivel de significancia del 5%, por lo que no tenemos evidencia estadística para rechazar la hipótesis de que ambos son similares.
+
+- Como podemos observar el valor del _p_value_ que hemos obtenido para el par NI-FP es mayor que un nivel de significancia del 5%, por lo que no tenemos evidencia estadística para rechazar la hipótesis de que ambos son similares.
+
+- Para todos los demás pares tenemos valores de _p_value_ menores que un nivel de significancia del 5%, por tanto se puede rechazar la hipótesis de que entre estas parejas se tiene una media similar. Esto nos indica que estos grupos son diferentes entre ellos.
+
+\newpage
+
+## 8.2 Corrección de Bonferroni
+
+Aplicar la corrección de Bonferroni en la comparación múltiple. Interpretar el resultado y contrastar el resultado con el obtenido en el test de comparaciones múltiples sin corrección.
+
+\vspace{0.3cm}
+
+```{r}
+pairwise.t.test(df$AE,df$Tipo, p.adj=c("bonferroni"))
+```
+
+\vspace{0.3cm}
+
+Obtenemos los mismos resultados pero con valores más fáciles de interpretar, que tienen más fortaleza a la hora de rechazar la hipótesis.
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+# 9 ANOVA multifactorial
+
+------------------------------------------------------------------------
+
+\vspace{0.3cm}
+
+En una segunda fase de la investigación se evalua el efecto del género como variable independiente, además del efecto del tipo de fumador, sobre la variable AE.
+
+\vspace{0.3cm}
+
+## 9.1 Análisis visual
+
+\vspace{0.3cm}
+
+Se realizará un primer estudio visual para determinar si existen efectos principales o hay efectos de interacción entre género y tipo de fumador. Para ello, seguir los pasos que se indican a continuación:
+
+\vspace{0.3cm}
+
+1. Agrupar el conjunto de datos por tipo de fumador y género y calcular la media de AE en cada grupo. Podéis usar las instrucciones group_by y summarise de la librería dplyr para realizar este proceso. Mostrar el conjunto de datos en forma de tabla, donde se muestre la media de cada grupo según el género y tipo de fumador.
+
+\vspace{0.3cm}
+
+```{r}
+resumen <- df %>% group_by(genero, Tipo) %>% summarise(means = mean(AE), counts = length(AE))
+resumen
+```
+
+\vspace{0.3cm}
+
+2. Mostrar en un gráfico el valor de AE medio para cada tipo de fumador y género. Podéis realizar este tipo de gráfico usando la función ggplot de la librería ggplot2.
+
+\vspace{0.3cm}
+
+```{r}
+ggplot(resumen, aes(fill = genero, x = Tipo, y = means)) +
+  geom_bar(position="dodge", stat="identity")+
+  scale_color_manual(values = c("#0073C2FF", "#EFC000FF"))+
+  scale_fill_manual(values = c("#0073C2FF", "#EFC000FF")) +
+  ylab("AE means")
+```
+
+\vspace{0.3cm}
+
+3. Interpretar el resultado sobre si existen sólo efectos principales o existe interacción. Si existe interacción, explicar cómo se observa y qué efectos produce esta interacción.
+
+\vspace{0.3cm}
+
+Para los valores NI y FP, la diferencia de la media de AE para el género M y F no parece ser significativa. Sin embargo, sí puede verse en la gráfica anterior que para valores como FI, FL, FM y NF puede existir una diferencia considerable entre estas medias.
+
+\vspace{0.3cm}
+
+## 9.2 ANOVA multifactorial
+
+Calcular ANOVA multifactorial para evaluar si la variable dependiente AE se puede explicar a partir de las variables independientes género y tipo de fumador. Incluid el efecto de la interacción.
+
+\vspace{0.3cm}
+
+```{r}
+multi_anova <- aov(AE ~ Tipo*genero, data=df)
+summary(multi_anova)
+```
+
+\newpage
+
+## 9.3 Interpretación
+
+Interpretad el resultado.
+
+\vspace{0.3cm}
+
+A priori se puede decir que _genero_ no tiene evidencia estadística suficiente para afirmar que es significativa para el modelo, eso ya que el _p_value_ es mayor que un nivel de significancia de 5%. Esto también le ocurre a la interacción. Por tanto, es mejor utilizar un anota de un único factor en el que solamente se toma el _Tipo_.
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+# 10 Resumen técnico
+
+------------------------------------------------------------------------
+
+\vspace{0.3cm}
+
+Realizad una tabla con el resumen técnico de las preguntas de investigación planteadas a lo largo de esta actividad.
+
+\vspace{0.3cm}
+
+| N | Pregunta | Resultado y conclusión |
+|:-:|:--------------:|:--------------------------:|
+| 1 | ¿Se observan diferencias en la capacidad pulmonar en relación al género? Interpretación desde gráficas.| Las distribuciones parecen centradas en la media del intervalo [0;3], aunque sí existen más casos atípicos cuando el género es F. |
+|---|--------------|--------------------------|
+|2|¿Se observan diferencias significativas entre los intervalos de confianza de la capacidad pulmonar de mujeres y hombres?|Ambos intervalos son relativamente similares puesto que varían recién en la segunda cifra decimal,ambos rondan el 1.55 como valor central.|
+|---|--------------|--------------------------|
+|3|¿Se observan diferencias significativas en la capacidad pulmonar de mujeres y hombres? Interpretación a través de contraste de hipótesis.|Como el _p_value_ es mayor que el nivel de significancia, se debe aceptar la hipótesis nula porque nohay evidencia suficiente para poder descartarla. Por lo tanto, lo único que se puede decir es que la capacidad pulmonar de ambos grupos se muestra igual.|
+|---|--------------|--------------------------|
+|4|¿Podemos afirmar que la capacidad pulmonar de los fumadores es inferior a la de no fumadores?|Ya que el _p_value_ tiene un valor menor al nivel de significancia, se puede rechazar la hipótesis nula y aceptar la hipótesis alternativa. Por lo tanto, se tiene evidencia estadística suficiente para inferir que la capacidad pulmonar de los fumadores es menor que la de los no fumadores.|
+|---|--------------|--------------------------|
+|5|¿Existen diferencias entre la capacidad pulmonar (AE) entre los distintos tipos de fumadores/no fumadores? Si existen diferencias, ¿entre qué grupos están estas diferencias?|Dado que el _p_value_ es mucho más pequeño que el nivel de significancia del 5%, se puede rechazar la hipótesis nula y aceptar la hipótesis alternativa. Esto es, que hay al menos un valor de la variable _Tipo_ cuya media no es igual a las demás. Por tanto, _Tipo_ es un factor significativo en el modelo para predecir _AE_. La diferencia está en los pares FL-FI, FP-FI, NF-FI, NI-FI, FM-FL, NF-FL, FP-FM, NF-FM, NI-FM, NF-FP, NI-NF.|
+|---|--------------|--------------------------|
+
+
+\newpage
+
+
+
+
+
+
+
+
+
+
+# 11 Resumen ejecutivo
+
+------------------------------------------------------------------------
+
+\vspace{0.3cm}
+
+Escribid un resumen ejecutivo como si tuvieráis que comunicar a una audiencia no técnica. Por ejemplo, podría ser un equipo de gestores o decisores, a los cuales se les debe informar sobre las consecuencias de fumar sobre la capacidad pulmonar, para que puedan tomar las decisiones necesarias.
+
+\vspace{0.3cm}
+
+A partir de toda la información obtenida durante la realización de este informe, puede resumirse brevemente destacando la vinculación que existe entre el tipo de fumador y la capacidad pulmonar de los individuos. Incluso se puede ir un poco más allá pudiendo resaltar la estrecha relación entre los tipos específicos de individuo con la capacidad pulmonar.
+
+\vspace{0.3cm}
+
+La capacidad pulmonar presenta los mayores valores de la serie para aquellos individuos de la muestra que están clasificados como No Fumador (NF), mientras que los más bajos están presentes en los individuos clasificados como Fumador Moderado (FM) y Fumador Intensivo (FI), lo cual es observable en un contexto real.
+
+\vspace{0.3cm}
+
+En cuanto a género se refiere, no se ha determinado un tipo de vínculo que pueda dar lugar a una relación entre el género y la capacidad pulmonar.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
